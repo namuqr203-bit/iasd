@@ -1,0 +1,447 @@
+<title>Flip Loop</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Sora:wght@500;600;700&family=IBM+Plex+Mono:wght@400;500;600&family=Inter:wght@400;500;600&display=swap">
+<style>
+/* Layout: control strip on top, two wallet "coins" side by side, cycle ledger below. */
+:root{
+  --bg:#f3f2f7; --surface:#ffffff; --sunk:#ebe9f2; --line:#dcd9e6;
+  --fg:#1b1830; --muted:#6c6787; --accent:#7b3fe4; --accent-fg:#ffffff;
+  --a:#7b3fe4; --b:#0e9f8a;
+  --good:#12805c; --good-bg:#dcf3ea; --warn:#a15c00; --warn-bg:#fdeed6;
+  --bad:#c0263b; --bad-bg:#fbe1e5;
+  --display:"Sora",ui-sans-serif,system-ui,sans-serif;
+  --body:"Inter",ui-sans-serif,system-ui,sans-serif;
+  --mono:"IBM Plex Mono",ui-monospace,SFMono-Regular,Menlo,monospace;
+}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){
+  --bg:#100e1a; --surface:#1a1727; --sunk:#14121f; --line:#2c2840;
+  --fg:#ece9f7; --muted:#9a94b4; --accent:#a77bff; --accent-fg:#14101f;
+  --a:#a77bff; --b:#2fd1b4;
+  --good:#4fd6a2; --good-bg:#11392b; --warn:#f2b45c; --warn-bg:#3a2a12;
+  --bad:#ff7a8a; --bad-bg:#3d1720; color-scheme:dark}}
+:root[data-theme="dark"]{
+  --bg:#100e1a; --surface:#1a1727; --sunk:#14121f; --line:#2c2840;
+  --fg:#ece9f7; --muted:#9a94b4; --accent:#a77bff; --accent-fg:#14101f;
+  --a:#a77bff; --b:#2fd1b4;
+  --good:#4fd6a2; --good-bg:#11392b; --warn:#f2b45c; --warn-bg:#3a2a12;
+  --bad:#ff7a8a; --bad-bg:#3d1720; color-scheme:dark}
+
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--fg);font:15px/1.5 var(--body);
+  padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px));
+  padding-block:24px 48px}
+.wrap{max-width:1040px;margin:0 auto;display:grid;gap:20px}
+h1,h2{font-family:var(--display);margin:0;text-wrap:balance}
+h1{font-size:1.6rem;letter-spacing:-.01em}
+h2{font-size:1.05rem}
+.mono{font-family:var(--mono);font-variant-numeric:tabular-nums}
+.muted{color:var(--muted)}
+.label{font-size:.72rem;text-transform:uppercase;letter-spacing:.08em;color:var(--muted);font-weight:600}
+button{font:600 .9rem var(--body);border-radius:10px;border:1px solid var(--line);
+  background:var(--surface);color:var(--fg);padding:9px 14px;cursor:pointer}
+button:hover{border-color:var(--muted)}
+button:focus-visible,input:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+button.primary{background:var(--accent);color:var(--accent-fg);border-color:var(--accent)}
+button.danger{color:var(--bad)}
+button:disabled{opacity:.5;cursor:not-allowed}
+.sm{padding:5px 10px;font-size:.8rem;border-radius:8px}
+
+.banner{border-radius:12px;padding:10px 14px;font-size:.9rem}
+.banner.warn{background:var(--warn-bg);color:var(--warn)}
+.banner.info{background:var(--sunk);color:var(--muted)}
+
+/* top strip */
+.top{display:flex;flex-wrap:wrap;gap:16px;align-items:center;justify-content:space-between}
+.pill{display:inline-flex;align-items:center;gap:7px;border-radius:999px;padding:4px 11px;
+  font-size:.8rem;font-weight:600}
+.pill::before{content:"";width:8px;height:8px;border-radius:50%;background:currentColor}
+.pill.on{background:var(--good-bg);color:var(--good)}
+.pill.off{background:var(--sunk);color:var(--muted)}
+.pill.busy{background:var(--warn-bg);color:var(--warn)}
+.pill.busy::before{animation:pulse 1.2s infinite}
+@keyframes pulse{50%{opacity:.25}}
+
+.control{background:var(--surface);border:1px solid var(--line);border-radius:16px;padding:18px 20px;
+  display:grid;grid-template-columns:1fr auto;gap:16px;align-items:center}
+.control .stats{display:flex;flex-wrap:wrap;gap:28px}
+.stat .v{font-family:var(--mono);font-size:1.25rem;font-weight:600}
+.progress{display:flex;gap:6px;margin-top:6px}
+.progress span{width:22px;height:6px;border-radius:3px;background:var(--sunk)}
+.progress span.done{background:var(--good)}
+.progress span.now{background:var(--warn)}
+.stepline{font-size:.85rem;color:var(--muted);margin-top:4px;min-height:1.3em}
+
+/* wallets */
+.wallets{display:grid;grid-template-columns:1fr 1fr;gap:16px}
+.wallet{background:var(--surface);border:1px solid var(--line);border-radius:16px;padding:18px 20px;
+  display:grid;gap:12px;min-width:0}
+.whead{display:flex;align-items:center;gap:12px}
+.coin{width:42px;height:42px;border-radius:50%;display:grid;place-items:center;font:700 1.1rem var(--display);
+  color:var(--surface);flex:none}
+.coin.A{background:var(--a)} .coin.B{background:var(--b)}
+.bal{font:600 1.9rem var(--mono);font-variant-numeric:tabular-nums;letter-spacing:-.02em}
+.bal small{font-size:.9rem;color:var(--muted);font-weight:500}
+.addr{display:flex;gap:8px;align-items:center;background:var(--sunk);border-radius:10px;padding:8px 10px;min-width:0}
+.addr code{font-family:var(--mono);font-size:.8rem;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:1;min-width:0}
+.meter{height:6px;background:var(--sunk);border-radius:3px;overflow:hidden}
+.meter i{display:block;height:100%;background:var(--good)}
+.meter.low i{background:var(--warn)}
+.wfoot{display:flex;flex-wrap:wrap;gap:8px;justify-content:space-between;align-items:center;font-size:.82rem}
+
+/* history */
+.panel{background:var(--surface);border:1px solid var(--line);border-radius:16px;padding:18px 20px;min-width:0}
+.panel-head{display:flex;justify-content:space-between;align-items:baseline;gap:12px;margin-bottom:12px;flex-wrap:wrap}
+.cycle{border-top:1px solid var(--line)}
+.cycle summary{list-style:none;cursor:pointer;display:grid;grid-template-columns:auto 1fr auto auto;gap:14px;
+  align-items:center;padding:12px 0}
+.cycle summary::-webkit-details-marker{display:none}
+.cid{font:600 .85rem var(--mono);color:var(--muted);width:44px}
+.chips{display:flex;gap:5px;flex-wrap:wrap}
+.chip{width:26px;height:26px;border-radius:50%;display:grid;place-items:center;font:700 .72rem var(--display);
+  color:var(--surface)}
+.chip.A{background:var(--a)} .chip.B{background:var(--b)}
+.chip.x{background:var(--sunk);color:var(--muted)}
+.tag{font-size:.72rem;font-weight:700;border-radius:6px;padding:2px 7px;text-transform:uppercase;letter-spacing:.05em}
+.tag.DONE{background:var(--good-bg);color:var(--good)}
+.tag.RUNNING{background:var(--warn-bg);color:var(--warn)}
+.tag.ERROR,.tag.INTERRUPTED{background:var(--bad-bg);color:var(--bad)}
+.tag.NEEDS{background:var(--warn-bg);color:var(--warn)}
+.tag.STOPPED{background:var(--sunk);color:var(--muted)}
+.delta{font:500 .85rem var(--mono);text-align:right;min-width:92px}
+.neg{color:var(--bad)} .pos{color:var(--good)}
+.tablewrap{overflow-x:auto;padding-bottom:12px}
+table{border-collapse:collapse;width:100%;font-size:.84rem;min-width:620px}
+th{text-align:left;font-weight:600;color:var(--muted);font-size:.72rem;text-transform:uppercase;letter-spacing:.06em;
+  padding:6px 8px;border-bottom:1px solid var(--line)}
+td{padding:7px 8px;border-bottom:1px solid var(--line);vertical-align:top}
+td.num{font-family:var(--mono);font-variant-numeric:tabular-nums;white-space:nowrap}
+a{color:var(--accent)}
+.note{color:var(--muted);font-size:.8rem;padding:0 0 10px}
+.log{font:.8rem/1.6 var(--mono);max-height:260px;overflow:auto;background:var(--sunk);border-radius:10px;padding:10px 12px}
+.log div{white-space:pre-wrap;word-break:break-word}
+.log .error{color:var(--bad)} .log .warn{color:var(--warn)}
+.empty{color:var(--muted);padding:18px 0 6px}
+
+/* modal */
+.modal{position:fixed;inset:0;background:color-mix(in srgb,var(--bg) 70%,transparent);display:grid;place-items:center;
+  padding:16px;z-index:20;backdrop-filter:blur(4px)}
+.dialog{background:var(--surface);border:1px solid var(--line);border-radius:16px;padding:20px;width:min(480px,100%);
+  display:grid;gap:12px}
+.secret{font:.82rem/1.5 var(--mono);background:var(--sunk);border-radius:10px;padding:10px;word-break:break-all;user-select:all}
+.row{display:flex;gap:8px;justify-content:flex-end;flex-wrap:wrap}
+input{font:inherit;border:1px solid var(--line);border-radius:10px;padding:9px 12px;background:var(--sunk);color:var(--fg);width:100%}
+
+@media (max-width:720px){
+  .wallets{grid-template-columns:1fr}
+  .control{grid-template-columns:1fr}
+  .cycle summary{grid-template-columns:auto 1fr auto}
+  .cycle summary .delta{grid-column:2 / -1;text-align:left}
+}
+@media (prefers-reduced-motion:reduce){.pill.busy::before{animation:none}}
+</style>
+
+<div class="wrap">
+  <div id="banner" class="banner info" hidden></div>
+
+  <div class="top">
+    <div>
+      <h1>Flip Loop</h1>
+      <div class="muted" id="subtitle">Slotana PvP coin flip · wallet A creates, wallet B joins</div>
+    </div>
+    <span id="statePill" class="pill off">Stopped</span>
+  </div>
+
+  <section class="control" aria-label="Loop control">
+    <div>
+      <div class="stats">
+        <div class="stat"><div class="label">Next cycle</div><div class="v" id="nextCycle">—</div></div>
+        <div class="stat"><div class="label">Bet per game</div><div class="v" id="betSize">—</div></div>
+        <div class="stat"><div class="label">Schedule</div><div class="v" id="schedule">—</div></div>
+        <div class="stat"><div class="label">Combined</div><div class="v" id="combined">—</div></div>
+      </div>
+      <div id="progressWrap" hidden>
+        <div class="progress" id="progress"></div>
+        <div class="stepline" id="stepLine"></div>
+      </div>
+    </div>
+    <div class="row">
+      <button id="startBtn" class="primary">Start loop</button>
+      <button id="stopBtn" class="danger" hidden>Stop</button>
+    </div>
+  </section>
+
+  <section class="wallets" id="wallets" aria-label="Wallets"></section>
+
+  <section class="panel" aria-label="Cycle history">
+    <div class="panel-head">
+      <h2>History</h2>
+      <span class="muted" id="histSummary"></span>
+    </div>
+    <div id="history"></div>
+  </section>
+
+  <section class="panel" aria-label="Activity log">
+    <div class="panel-head"><h2>Activity</h2><span class="muted">newest first</span></div>
+    <div class="log" id="log"></div>
+  </section>
+</div>
+
+<div class="modal" id="modal" hidden>
+  <div class="dialog" role="dialog" aria-modal="true" aria-labelledby="modalTitle">
+    <h2 id="modalTitle"></h2>
+    <div id="modalBody"></div>
+    <div class="row" id="modalActions"></div>
+  </div>
+</div>
+
+<script>
+const LAMPORTS = 1e9;
+const $ = id => document.getElementById(id);
+let state = null, demo = false, password = "";
+try { password = sessionStorage.getItem("flipPw") || ""; } catch (e) {}
+
+const sol = (l, d = 4) => l == null ? "—" : (l / LAMPORTS).toFixed(d);
+const short = a => a ? a.slice(0, 4) + "…" + a.slice(-4) : "—";
+const solscan = (kind, v) => `https://solscan.io/${kind}/${v}`;
+const esc = s => String(s ?? "").replace(/[&<>"]/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
+const when = iso => iso ? new Date(iso).toLocaleString([], {month:"short", day:"numeric", hour:"2-digit", minute:"2-digit"}) : "";
+
+async function api(path, body) {
+  if (demo) throw new Error("This is a preview with sample data. Buttons work once it's deployed.");
+  const opts = body === undefined ? {} : {
+    method: "POST", headers: {"Content-Type": "application/json", "X-Password": password},
+    body: JSON.stringify(body)
+  };
+  const r = await fetch(path, opts);
+  const j = await r.json().catch(() => ({}));
+  if (r.status === 401) { password = ""; throw Object.assign(new Error("Wrong password"), {auth: true}); }
+  if (!r.ok) throw new Error(j.error || `Request failed (${r.status})`);
+  return j;
+}
+
+async function load() {
+  try { state = await api("/api/state"); }
+  catch (e) { if (!state) { demo = true; state = demoState(); } }
+  render();
+}
+
+function render() {
+  const s = state;
+  const banner = $("banner");
+  if (demo) { banner.className = "banner info"; banner.textContent = "Preview with sample data. Once deployed, this page shows your real wallets and games."; banner.hidden = false; }
+  else if (s.no_volume) { banner.className = "banner warn"; banner.textContent = "No Railway Volume attached: the wallets are deleted on the next redeploy. Add a Volume to this service before funding, or export both keys now."; banner.hidden = false; }
+  else if (s.dry_run) { banner.className = "banner warn"; banner.textContent = "Simulation mode (DRY_RUN=true): no real SOL is used. Remove DRY_RUN in Railway to go live."; banner.hidden = false; }
+  else banner.hidden = true;
+
+  const pill = $("statePill");
+  if (s.busy) { pill.className = "pill busy"; pill.textContent = `Playing round ${s.status.round} of ${s.settings.rounds}`; }
+  else if (s.running) { pill.className = "pill on"; pill.textContent = "Running"; }
+  else { pill.className = "pill off"; pill.textContent = "Stopped"; }
+
+  $("startBtn").hidden = s.running;
+  $("stopBtn").hidden = !s.running;
+  $("betSize").textContent = s.settings.bet_sol + " SOL";
+  $("schedule").textContent = `${s.settings.rounds} × every ${s.settings.cycle_hours}h`;
+  const total = s.wallets.every(w => w.lamports != null) ? s.wallets.reduce((t, w) => t + w.lamports, 0) : null;
+  $("combined").textContent = sol(total) + " SOL";
+
+  $("progressWrap").hidden = !s.busy;
+  if (s.busy) {
+    $("progress").innerHTML = Array.from({length: s.settings.rounds}, (_, i) =>
+      `<span class="${i + 1 < s.status.round ? "done" : i + 1 === s.status.round ? "now" : ""}"></span>`).join("");
+    $("stepLine").textContent = s.status.step || "";
+  }
+  tick();
+
+  const min = s.settings.min_per_wallet_sol * LAMPORTS;
+  $("wallets").innerHTML = s.wallets.map(w => {
+    const pct = w.lamports == null ? 0 : Math.min(100, w.lamports / (min * 2) * 100);
+    const low = w.lamports != null && w.lamports < min;
+    return `<article class="wallet">
+      <div class="whead"><div class="coin ${w.label}">${w.label}</div>
+        <div><h2>Wallet ${w.label}</h2><div class="muted" style="font-size:.85rem">${esc(w.role)}</div></div></div>
+      <div class="bal">${sol(w.lamports)} <small>SOL</small></div>
+      <div class="meter ${low ? "low" : ""}" title="Funding level"><i style="width:${pct}%"></i></div>
+      <div class="addr"><code title="${esc(w.address)}">${esc(w.address)}</code>
+        <button class="sm" data-copy="${esc(w.address)}">Copy</button></div>
+      <div class="wfoot">
+        <span class="${low ? "" : "muted"}" style="${low ? "color:var(--warn);font-weight:600" : ""}">
+          ${low ? `Needs at least ${s.settings.min_per_wallet_sol.toFixed(4)} SOL` : "Send SOL to this address to fund it"}</span>
+        <span class="row">
+          <a class="sm" href="${solscan("account", w.address)}" target="_blank" rel="noopener">Solscan</a>
+          <button class="sm" data-export="${w.label}">Export private key</button></span>
+      </div></article>`;
+  }).join("");
+
+  const cycles = s.cycles || [];
+  const doneCount = cycles.reduce((t, c) => t + (c.rounds || []).filter(r => r.status === "DONE").length, 0);
+  $("histSummary").textContent = cycles.length ? `${cycles.length} cycles · ${doneCount} games played` : "";
+  $("history").innerHTML = cycles.length ? cycles.map(cycleHTML).join("") :
+    `<div class="empty">No cycles yet. Fund both wallets, then press <b>Start loop</b>. The first 5 games run right away, then every ${s.settings.cycle_hours} hours.</div>`;
+
+  $("log").innerHTML = (s.log || []).map(l =>
+    `<div class="${l.level}"><span class="muted">${when(l.ts)}</span>  ${esc(l.message)}</div>`).join("") || `<div class="muted">Nothing yet.</div>`;
+}
+
+function cycleHTML(c) {
+  const rounds = c.rounds || [];
+  const chips = Array.from({length: state.settings.rounds}, (_, i) => {
+    const r = rounds[i];
+    if (!r || !r.winner) return `<span class="chip x" title="Round ${i + 1}: not played">${i + 1}</span>`;
+    return `<span class="chip ${r.winner}" title="Round ${i + 1}: wallet ${r.winner} won">${r.winner}</span>`;
+  }).join("");
+  const delta = c.end_total != null && c.start_total != null ? c.end_total - c.start_total : null;
+  const tagKey = (c.status || "").split(" ")[0];
+  const rows = rounds.map(r => `<tr>
+    <td class="num">${r.round_no}</td>
+    <td class="num">${r.game_id ? "#" + r.game_id : "—"}</td>
+    <td>${esc(r.face || "—")}</td>
+    <td>${r.winner ? "Wallet " + r.winner : "—"}</td>
+    <td class="num">${r.split_amount ? `${r.split_from} → ${r.split_from === "A" ? "B" : "A"} ${sol(r.split_amount, 6)}` : "—"}</td>
+    <td class="num">${sol(r.bal_a)} / ${sol(r.bal_b)}</td>
+    <td>${[["create", r.create_sig], ["join", r.join_sig], ["split", r.split_sig]]
+        .filter(([, v]) => v && v !== "simulated").map(([k, v]) => `<a href="${solscan("tx", v)}" target="_blank" rel="noopener">${k}</a>`).join(" ") || "—"}</td>
+  </tr>${r.note ? `<tr><td></td><td colspan="6" class="note">${esc(r.note)}</td></tr>` : ""}`).join("");
+  return `<details class="cycle">
+    <summary><span class="cid">#${c.id}</span>
+      <span><div class="chips">${chips}</div><div class="muted" style="font-size:.8rem;margin-top:3px">${when(c.started_at)}</div></span>
+      <span class="tag ${tagKey}">${esc(c.status)}</span>
+      <span class="delta ${delta < 0 ? "neg" : delta > 0 ? "pos" : ""}">${delta == null ? "" : (delta > 0 ? "+" : "") + sol(delta, 5) + " SOL"}</span>
+    </summary>
+    ${c.note ? `<div class="note">${esc(c.note)}</div>` : ""}
+    <div class="tablewrap"><table>
+      <thead><tr><th>Round</th><th>Game</th><th>A called</th><th>Winner</th><th>Auto split</th><th>Balances A / B</th><th>Tx</th></tr></thead>
+      <tbody>${rows || `<tr><td colspan="7" class="muted">No rounds</td></tr>`}</tbody></table></div>
+  </details>`;
+}
+
+function tick() {
+  if (!state) return;
+  const el = $("nextCycle");
+  if (state.busy) { el.textContent = "Now"; return; }
+  if (!state.next_cycle_at) { el.textContent = "Not scheduled"; return; }
+  const sec = Math.max(0, Math.round(state.next_cycle_at - Date.now() / 1000));
+  const h = Math.floor(sec / 3600), m = Math.floor(sec % 3600 / 60), s = sec % 60;
+  el.textContent = `${h}h ${String(m).padStart(2, "0")}m ${String(s).padStart(2, "0")}s`;
+}
+
+/* ---------- modal helpers ---------- */
+function modal(title, bodyHTML, actions) {
+  $("modalTitle").textContent = title;
+  $("modalBody").innerHTML = bodyHTML;
+  $("modalActions").innerHTML = "";
+  actions.forEach(([label, cls, fn]) => {
+    const b = document.createElement("button");
+    b.textContent = label; if (cls) b.className = cls;
+    b.onclick = fn; $("modalActions").appendChild(b);
+  });
+  $("modal").hidden = false;
+}
+const closeModal = () => { $("modal").hidden = true; };
+$("modal").addEventListener("click", e => { if (e.target.id === "modal") closeModal(); });
+document.addEventListener("keydown", e => { if (e.key === "Escape") closeModal(); });
+
+function message(title, text) { modal(title, `<p>${esc(text)}</p>`, [["OK", "primary", closeModal]]); }
+
+/* runs an action, asking for the password only if the server wants one */
+async function guarded(fn) {
+  try { return await fn(); }
+  catch (e) {
+    if (!e.auth) { message("Couldn't do that", e.message); return; }
+    return new Promise(resolve => {
+      modal("Password", `<label class="label" for="pw">Admin password</label><input id="pw" type="password" autocomplete="current-password">`,
+        [["Cancel", "", () => { closeModal(); resolve(); }],
+         ["Continue", "primary", async () => {
+           password = $("pw").value;
+           try { sessionStorage.setItem("flipPw", password); } catch (err) {}
+           closeModal(); resolve(await guarded(fn));
+         }]]);
+      setTimeout(() => $("pw")?.focus(), 30);
+    });
+  }
+}
+
+$("startBtn").onclick = () => {
+  const s = state.settings;
+  modal("Start the loop?",
+    `<p>Wallet A creates and wallet B joins <b>${s.rounds} games of ${s.bet_sol} SOL</b> now, with an auto split after each one. Then the same runs again every <b>${s.cycle_hours} hours</b> until you press Stop.</p>
+     <p class="muted">Each wallet needs at least ${s.min_per_wallet_sol.toFixed(4)} SOL before every game.</p>`,
+    [["Cancel", "", closeModal], ["Start", "primary", async () => {
+      closeModal(); await guarded(() => api("/api/start", {})); load();
+    }]]);
+};
+$("stopBtn").onclick = () => {
+  modal("Stop the loop?", `<p>No new cycles will start. A round already in progress finishes first so no SOL is left stuck in a game.</p>`,
+    [["Keep running", "", closeModal], ["Stop", "danger", async () => {
+      closeModal(); await guarded(() => api("/api/stop", {})); load();
+    }]]);
+};
+
+document.addEventListener("click", async e => {
+  const c = e.target.closest("[data-copy]");
+  if (c) copy(c.dataset.copy, c);
+  const x = e.target.closest("[data-export]");
+  if (x) {
+    const label = x.dataset.export;
+    modal(`Export wallet ${label} private key`,
+      `<p>Anyone with this key controls the wallet and its SOL. Only paste it into your own wallet app.</p>`,
+      [["Cancel", "", closeModal], ["Show key", "primary", async () => {
+        closeModal();
+        const r = await guarded(() => api("/api/export", {label}));
+        if (!r) return;
+        modal(`Wallet ${label} private key`,
+          `<div class="secret" id="secretBox">${esc(r.secret)}</div>
+           <p class="muted" style="font-size:.85rem">Import in Phantom: Add wallet → Import private key.</p>`,
+          [["Copy key", "", ev => copy(r.secret, ev.target)], ["Done", "primary", closeModal]]);
+      }]]);
+  }
+});
+
+async function copy(text, btn) {
+  try { await navigator.clipboard.writeText(text); }
+  catch (e) {
+    const box = $("secretBox");
+    if (box) { const rg = document.createRange(); rg.selectNodeContents(box); const sel = getSelection(); sel.removeAllRanges(); sel.addRange(rg); }
+  }
+  if (btn) { const t = btn.textContent; btn.textContent = "Copied"; setTimeout(() => btn.textContent = t, 1200); }
+}
+
+/* ---------- sample data for the preview ---------- */
+function demoState() {
+  const A = "7xKq3m9QbF2vLr8tWcNp5Hs1Yd6Je4Zu0Ga3RkVfBn2", B = "4PzT8nWj6Lc2Rq9Ym5Dv1Xe3Fh7Ks0Ub8Ga2NtCw6Qe";
+  const now = Date.now(), h = 3600e3;
+  const mk = (id, startH, winners, startTot) => {
+    let tot = startTot;
+    const rounds = winners.map((w, i) => {
+      tot -= 300000 + 5000;
+      return {round_no: i + 1, game_id: 8810 + id * 5 + i, face: i % 2 ? "tails" : "heads", winner: w,
+        split_from: w, split_amount: 4847500, bal_a: Math.round(tot / 2), bal_b: Math.round(tot / 2),
+        create_sig: null, join_sig: null, split_sig: null, status: "DONE"};
+    });
+    return {id, started_at: new Date(now - startH * h).toISOString(), status: "DONE",
+      rounds_done: 5, start_total: startTot, end_total: tot, rounds};
+  };
+  return {
+    wallets: [{label: "A", role: "Creates games", address: A, lamports: 8_150_000},
+              {label: "B", role: "Joins games", address: B, lamports: 8_150_000}],
+    running: true, busy: false, status: {round: 0, step: ""},
+    next_cycle_at: (now + 4.4 * h) / 1000, dry_run: false, password_required: false,
+    settings: {bet_sol: 0.005, rounds: 5, cycle_hours: 12, cooldown_sec: 20, cluster: "mainnet", min_per_wallet_sol: 0.005900880},
+    cycles: [mk(2, 7.6, ["B", "A", "A", "B", "A"], 17_675_000), mk(1, 19.6, ["A", "B", "B", "B", "A"], 20_000_000)],
+    log: [
+      {ts: new Date(now - 7.3 * h).toISOString(), level: "info", message: "Cycle 2 finished: DONE (5/5 rounds)"},
+      {ts: new Date(now - 7.3 * h).toISOString(), level: "info", message: "Round 5: done. A 0.0082 SOL, B 0.0082 SOL"},
+      {ts: new Date(now - 7.32 * h).toISOString(), level: "info", message: "Round 5: auto split, A sends 0.004848 SOL to B"},
+      {ts: new Date(now - 7.35 * h).toISOString(), level: "info", message: "Round 5: game #8834 won by wallet A"},
+      {ts: new Date(now - 7.6 * h).toISOString(), level: "info", message: "Cycle 2 started (5 rounds)"},
+    ],
+  };
+}
+
+load();
+setInterval(load, 8000);
+setInterval(tick, 1000);
+</script>
