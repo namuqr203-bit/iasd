@@ -33,7 +33,7 @@ def env_bool(name, default):
 
 
 LAMPORTS = 1_000_000_000
-SLOTANA_API_URL = env("SLOTANA_API_URL", "https://api.slotana.io").rstrip("/")
+SLOTANA_API_URL = env("SLOTANA_API_URL", "https://backend.slotana.io").rstrip("/")
 CLUSTER = env("CLUSTER", "mainnet")
 RPC_URL = env("RPC_URL", "https://api.mainnet-beta.solana.com")
 
@@ -145,18 +145,27 @@ def rpc(method, params):
     r.raise_for_status()
     body = r.json()
     if "error" in body:
-        raise RuntimeError(f"RPC {method}: {body['error'].get('message')}")
+        err = body["error"]
+        detail = ""
+        data = err.get("data") or {}
+        if isinstance(data, dict):
+            if data.get("err"):
+                detail += f" | err: {data['err']}"
+            logs = [l for l in (data.get("logs") or []) if l]
+            if logs:
+                detail += " | " + " / ".join(logs[-3:])
+        raise RuntimeError(f"RPC {method}: {err.get('message')}{detail}")
     return body["result"]
 
 
-def balance(label):
+def balance(label, commitment="confirmed"):
     if DRY_RUN:
         return int(get_setting(f"sim_{label}", str(int(0.01 * LAMPORTS))))
-    return rpc("getBalance", [WALLETS[label].address, {"commitment": "confirmed"}])["value"]
+    return rpc("getBalance", [WALLETS[label].address, {"commitment": commitment}])["value"]
 
 
-def balances():
-    return balance("A"), balance("B")
+def balances(commitment="confirmed"):
+    return balance("A", commitment), balance("B", commitment)
 
 
 def wait_confirmed(sig, timeout=90):
@@ -177,12 +186,39 @@ def transfer(from_label, to_label, lamports):
         set_setting(f"sim_{from_label}", balance(from_label) - lamports - TX_FEE)
         set_setting(f"sim_{to_label}", balance(to_label) + lamports)
         return "simulated"
-    bh = rpc("getLatestBlockhash", [{"commitment": "confirmed"}])["value"]["blockhash"]
+    bh = rpc("getLatestBlockhash", [{"commitment": "finalized"}])["value"]["blockhash"]
     tx = build_transfer_tx(WALLETS[from_label], WALLETS[to_label].address, lamports, bh)
     sig = rpc("sendTransaction", [tx, {"encoding": "base64",
-                                       "preflightCommitment": "confirmed"}])
+                                       "preflightCommitment": "finalized"}])
     wait_confirmed(sig)
     return sig
+
+
+def rebalance(tag):
+    """Auto split: make both wallets equal. Uses finalized balances (so the
+    payout is definitely visible to every RPC node) and retries, because a
+    payout that only just landed can make the first attempt fail simulation."""
+    last_err = None
+    if not DRY_RUN:  # wait until finalized balances caught up with confirmed ones
+        end = time.time() + 60
+        while time.time() < end and balances("finalized") != balances("confirmed"):
+            time.sleep(4)
+    for attempt in range(1, 7):
+        a, b = balances("finalized")
+        diff = abs(a - b)
+        if diff < SPLIT_MIN_LAMPORTS:
+            return None, None, None
+        src, dst = ("A", "B") if a > b else ("B", "A")
+        amount = (diff - TX_FEE) // 2
+        try:
+            step(f"{tag}: auto split, {src} sends {amount / LAMPORTS:.6f} SOL to {dst}"
+                 + (f" (attempt {attempt})" if attempt > 1 else ""))
+            return src, amount, transfer(src, dst, amount)
+        except Exception as e:
+            last_err = e
+            log(f"{tag}: auto split attempt {attempt} failed: {e}", "warn")
+            time.sleep(10 if not DRY_RUN else 0)
+    raise RuntimeError(f"Auto split failed 6 times: {last_err}")
 
 
 # ------------------------------------------------------------------ Slotana
@@ -258,7 +294,9 @@ def run_round(cycle_id, n):
         cols = ", ".join(f"{k}=?" for k in kw)
         x(f"UPDATE rounds SET {cols} WHERE id=?", (*kw.values(), rid))
 
-    # 1. funds check
+    # 1. even out the wallets first (fixes a split that failed last time),
+    #    then check both have enough for a game
+    rebalance(f"Round {n}")
     a, b = balances()
     need = BET + RENT_MIN + TX_FEE * 2
     if a < need or b < need:
@@ -314,13 +352,8 @@ def run_round(cycle_id, n):
     time.sleep(COOLDOWN_SEC if not DRY_RUN else 1)
 
     # 5. auto split
-    a, b = balances()
-    diff = abs(a - b)
-    if diff >= SPLIT_MIN_LAMPORTS:
-        src, dst = ("A", "B") if a > b else ("B", "A")
-        amount = (diff - TX_FEE) // 2
-        step(f"Round {n}: auto split, {src} sends {amount / LAMPORTS:.6f} SOL to {dst}")
-        sig = transfer(src, dst, amount)
+    src, amount, sig = rebalance(f"Round {n}")
+    if src:
         upd(split_from=src, split_amount=amount, split_sig=sig)
     a, b = balances()
     upd(bal_a=a, bal_b=b, status="DONE")
